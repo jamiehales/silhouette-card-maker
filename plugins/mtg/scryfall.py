@@ -8,6 +8,49 @@ import time
 
 double_sided_layouts = ['transform', 'modal_dfc']
 
+def read_file(filename):
+    with open(filename, 'rb') as f:
+        contents = f.read()
+    return contents
+
+def cache_or_get_card_image(card_set: str, card_collector_number: str, card_name: str, is_back: bool) -> bytes:
+    card_info_query = f"https://api.scryfall.com/cards/{card_set}/{card_collector_number}"
+
+    card_front_image_query = f"https://api.scryfall.com/cards/{card_set}/{card_collector_number}/?format=image&version=png"
+    card_back_image_query = card_front_image_query + "&face=back"
+
+    card_image_query = card_front_image_query if not is_back else card_back_image_query
+    
+    cache_front_dir = f'game/cache/front/'
+    cache_back_dir = f'game/cache/back/'
+
+    os.makedirs(cache_front_dir, exist_ok=True)
+    os.makedirs(cache_back_dir, exist_ok=True)
+
+    cache_dir = cache_front_dir if not is_back else cache_back_dir    
+
+    for filename in os.listdir(cache_dir): 
+        parts = filename.split('-')
+        if len(parts) < 2:
+            continue
+        set_part = parts[0].lower()
+        number_part = parts[1].lower()
+        if set_part == card_set.lower() and number_part == card_collector_number.lower():
+            return read_file(os.path.join(cache_dir, filename))
+
+    filename = f'{card_set}-{card_collector_number}-{card_name}.png'
+
+    # We're not cached, fetch the image and cache it
+    os.makedirs(os.path.dirname(cache_dir), exist_ok=True)
+    card_art = request_scryfall(card_image_query).content
+    if card_art is not None:
+        image_path = os.path.join(cache_dir, filename)
+
+        with open(image_path, 'wb') as f:
+            f.write(card_art)
+
+    return card_art
+
 def request_scryfall(
     query: str,
 ) -> requests.Response:
@@ -21,7 +64,7 @@ def request_scryfall(
 
     return r
 
-def fetch_card_art(
+def process_card(
     index: int,
     quantity: int,
 
@@ -33,11 +76,8 @@ def fetch_card_art(
     front_img_dir: str,
     double_sided_dir: str
 ) -> None:
-    # Query for the front side
-    card_front_image_query = f'https://api.scryfall.com/cards/{card_set}/{card_collector_number}/?format=image&version=png'
-    card_art = request_scryfall(card_front_image_query).content
+    card_art = cache_or_get_card_image(card_set, card_collector_number, clean_card_name, False)
     if card_art is not None:
-
         # Save image based on quantity
         for counter in range(quantity):
             image_path = os.path.join(front_img_dir, f'{str(index)}{clean_card_name}{str(counter + 1)}.png')
@@ -47,19 +87,22 @@ def fetch_card_art(
 
     # Get backside of card, if it exists
     if layout in double_sided_layouts:
-        card_back_image_query = f'{card_front_image_query}&face=back'
-        card_art = request_scryfall(card_back_image_query).content
+        card_art = cache_or_get_card_image(card_set, card_collector_number, clean_card_name, True)
         if card_art is not None:
-
             # Save image based on quantity
             for counter in range(quantity):
-                image_path = os.path.join(double_sided_dir, f'{str(index)}{clean_card_name}{str(counter + 1)}.png')
+                image_path = os.path.join(double_sided_dir, f'{str(index)}-{clean_card_name}-{str(counter + 1)}.png')
 
                 with open(image_path, 'wb') as f:
                     f.write(card_art)
 
-def remove_nonalphanumeric(s: str) -> str:
+def remove_non_alphanumeric(s: str) -> str:
     return re.sub(r'[^\w]', '', s)
+
+def format_card_name(s: str) -> str:
+    s = re.sub(r'[^\w\s]', '', s)
+    s = re.sub(r'\s+', '-', s)
+    return s.strip().lower()
 
 def partition_printings(printings: List, condition: List) -> Tuple[List, List]:
     matches = []
@@ -113,14 +156,14 @@ def fetch_card(
         # Query for card info
         card_json = request_scryfall(card_info_query).json()
 
-        fetch_card_art(index, quantity, remove_nonalphanumeric(card_json['name']), card_set, card_collector_number, card_json['layout'], front_img_dir, double_sided_dir)
+        process_card(index, quantity, format_card_name(card_json['name']), card_set, card_collector_number, card_json['layout'], front_img_dir, double_sided_dir)
 
     else:
         if name == "":
             raise Exception()
 
         # Filter out symbols from card names
-        clear_card_name = remove_nonalphanumeric(name)
+        clear_card_name = remove_non_alphanumeric(name)
 
         card_info_query = f'https://api.scryfall.com/cards/named?exact={clear_card_name}'
 
@@ -161,10 +204,10 @@ def fetch_card(
                 collector_number = best_print["collector_number"]
 
         # Fetch card art
-        fetch_card_art(
+        process_card(
             index,
             quantity,
-            clear_card_name,
+            format_card_name(card_json['name']),
             set,
             collector_number,
             card_json['layout'],
