@@ -13,9 +13,7 @@ def read_file(filename):
         contents = f.read()
     return contents
 
-def cache_or_get_card_image(card_set: str, card_collector_number: str, card_name: str, is_back: bool) -> bytes:
-    card_info_query = f"https://api.scryfall.com/cards/{card_set}/{card_collector_number}"
-
+def cache_and_get_card_image(card_set: str, card_collector_number: str, card_name: str, is_back: bool) -> bytes:
     card_front_image_query = f"https://api.scryfall.com/cards/{card_set}/{card_collector_number}/?format=image&version=png"
     card_back_image_query = card_front_image_query + "&face=back"
 
@@ -76,7 +74,7 @@ def process_card(
     front_img_dir: str,
     double_sided_dir: str
 ) -> None:
-    card_art = cache_or_get_card_image(card_set, card_collector_number, clean_card_name, False)
+    card_art = cache_and_get_card_image(card_set, card_collector_number, clean_card_name, False)
     if card_art is not None:
         # Save image based on quantity
         for counter in range(quantity):
@@ -87,7 +85,7 @@ def process_card(
 
     # Get backside of card, if it exists
     if layout in double_sided_layouts:
-        card_art = cache_or_get_card_image(card_set, card_collector_number, clean_card_name, True)
+        card_art = cache_and_get_card_image(card_set, card_collector_number, clean_card_name, True)
         if card_art is not None:
             # Save image based on quantity
             for counter in range(quantity):
