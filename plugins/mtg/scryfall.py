@@ -62,6 +62,13 @@ def request_scryfall(
 
     return r
 
+def save_card(card_art: bytes, quantity: int) -> None:
+    for counter in range(quantity):
+        image_path = os.path.join('game', 'front', f'{str(counter + 1)}.png')
+
+        with open(image_path, 'wb') as f:
+            f.write(card_art)
+
 def process_card(
     index: int,
     quantity: int,
@@ -76,23 +83,13 @@ def process_card(
 ) -> None:
     card_art = cache_and_get_card_image(card_set, card_collector_number, clean_card_name, False)
     if card_art is not None:
-        # Save image based on quantity
-        for counter in range(quantity):
-            image_path = os.path.join(front_img_dir, f'{str(index)}-{clean_card_name}-{str(counter + 1)}.png')
-
-            with open(image_path, 'wb') as f:
-                f.write(card_art)
+        save_card(card_art, quantity)
 
     # Get backside of card, if it exists
     if layout in double_sided_layouts:
         card_art = cache_and_get_card_image(card_set, card_collector_number, clean_card_name, True)
         if card_art is not None:
-            # Save image based on quantity
-            for counter in range(quantity):
-                image_path = os.path.join(double_sided_dir, f'{str(index)}-{clean_card_name}-{str(counter + 1)}.png')
-
-                with open(image_path, 'wb') as f:
-                    f.write(card_art)
+            save_card(card_art, quantity)
 
 def remove_non_alphanumeric(s: str) -> str:
     return re.sub(r'[^\w]', '', s)
