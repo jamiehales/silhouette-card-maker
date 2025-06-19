@@ -190,10 +190,12 @@ def parse_moxfield(deck_text, handle_card) -> None:
 def parse_scryfall(deck_text, handle_card) -> None:
     data = json.loads(deck_text)
     entries = data.get("entries", {})
-    items = entries.get("mainboard", []) + entries.get("sideboard", [])
+    items = [item for section in entries.values() for item in section]
 
     for index, item in enumerate(items, start=1):
         card_digest = item.get("card_digest", {})
+        if not card_digest:
+            continue
         name = card_digest.get("name", "")
         set_code = card_digest.get("set", "")
         collector_number = card_digest.get("collector_number", "")
