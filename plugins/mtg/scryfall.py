@@ -13,7 +13,7 @@ def read_file(filename):
         contents = f.read()
     return contents
 
-def cache_and_get_card_image(card_set: str, card_collector_number: str, card_name: str, is_back: bool) -> bytes:
+def cache_and_get_card(card_set: str, card_collector_number: str, card_name: str, is_back: bool) -> bytes:
     card_front_image_query = f"https://api.scryfall.com/cards/{card_set}/{card_collector_number}/?format=image&version=png"
     card_back_image_query = card_front_image_query + "&face=back"
 
@@ -34,11 +34,10 @@ def cache_and_get_card_image(card_set: str, card_collector_number: str, card_nam
         set_part = parts[0].lower()
         number_part = parts[1].lower()
         if set_part == card_set.lower() and number_part == card_collector_number.lower():
-            return read_file(os.path.join(cache_dir, filename))
-
-    filename = f'{card_set}-{card_collector_number}-{card_name}.png'
+            return (os.path.splitext(filename)[0], read_file(os.path.join(cache_dir, filename)))
 
     # We're not cached, fetch the image and cache it
+    filename = f'{card_set}-{card_collector_number}-{card_name}.png'
     os.makedirs(os.path.dirname(cache_dir), exist_ok=True)
     card_art = request_scryfall(card_image_query).content
     if card_art is not None:
@@ -62,9 +61,9 @@ def request_scryfall(
 
     return r
 
-def save_card(card_art: bytes, quantity: int) -> None:
+def save_card(directory: str, index: int, card_name: str, card_art: bytes, quantity: int) -> None:
     for counter in range(quantity):
-        image_path = os.path.join('game', 'front', f'{str(counter + 1)}.png')
+        image_path = os.path.join(directory, f'{str(index)}-{str(counter + 1)}-{card_name}.png')
 
         with open(image_path, 'wb') as f:
             f.write(card_art)
@@ -81,15 +80,15 @@ def process_card(
     front_img_dir: str,
     double_sided_dir: str
 ) -> None:
-    card_art = cache_and_get_card_image(card_set, card_collector_number, clean_card_name, False)
+    (card_name, card_art) = cache_and_get_card(card_set, card_collector_number, clean_card_name, False)
     if card_art is not None:
-        save_card(card_art, quantity)
+        save_card(front_img_dir, index, card_name, card_art, quantity)
 
     # Get backside of card, if it exists
     if layout in double_sided_layouts:
-        card_art = cache_and_get_card_image(card_set, card_collector_number, clean_card_name, True)
+        (card_name, card_art) = cache_and_get_card(card_set, card_collector_number, clean_card_name, True)
         if card_art is not None:
-            save_card(card_art, quantity)
+            save_card(double_sided_dir, index, card_name, card_art, quantity)
 
 def remove_non_alphanumeric(s: str) -> str:
     return re.sub(r'[^\w]', '', s)

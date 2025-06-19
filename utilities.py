@@ -120,11 +120,11 @@ def draw_card_with_bleed(card_image: Image, base_image: Image, box: tuple[int, i
     return base_image
 
 
-def draw_card_layout(card_images: List[Image.Image], base_image: Image.Image, num_rows: int, num_cols: int, x_pos: List[int], y_pos: List[int], width: int, height: int, print_bleed: tuple[int, int], crop: float, ppi_ratio: float, extend_corners: int, flip: bool):
+def draw_card_layout(card_images: List[tuple[str, Image.Image]], base_image: Image.Image, num_rows: int, num_cols: int, x_pos: List[int], y_pos: List[int], width: int, height: int, print_bleed: tuple[int, int], crop: float, ppi_ratio: float, extend_corners: int, flip: bool):
     num_cards = num_rows * num_cols
 
     # Fill all the spaces with the card back
-    for i, card_image in enumerate(card_images):
+    for i, (card_name, card_image) in enumerate(card_images):
 
         # Calculate the location of the new card based on what number the card is
         new_origin_x = math.floor(x_pos[i % num_cards % num_cols] * ppi_ratio)
@@ -137,7 +137,7 @@ def draw_card_layout(card_images: List[Image.Image], base_image: Image.Image, nu
             card_image = card_image.rotate(180)
 
         # Crop the outer portion of a card to remove preexisting print bleed
-        if crop > 0:
+        if crop > 0 and card_name.lower().endswith('-bleed'):
             card_width, card_height = card_image.size
             card_width_crop = math.floor(card_width / 2 * (crop / 100))
             card_height_crop = math.floor(card_height / 2 * (crop / 100))
@@ -226,11 +226,19 @@ def generate_pdf(
     front_image_filenames = [f for f in os.listdir(front_dir_path) if os.path.isfile(os.path.join(front_dir_path, f)) and not f.endswith(".md")]
     ds_image_filenames = [f for f in os.listdir(double_sided_dir_path) if os.path.isfile(os.path.join(double_sided_dir_path, f)) and not f.endswith(".md")]
 
+    def get_card_and_set(name):
+        name = os.path.splitext(name)[0]
+        name = name[:-6] if name.lower().endswith("-bleed") else name
+        name = '-'.join(name.split('-')[:4])
+        return name
+
     # Check if double-sided back images has matching front images
     front_set = set(front_image_filenames)
     ds_set = set(ds_image_filenames)
-    if not ds_set.issubset(front_set):
-        raise Exception(f'Double-sided backs "{ds_set - front_set}" do not have matching fronts. Add the missing fronts to front image directory "{front_dir_path}".')
+    front_set_stripped = set(map(get_card_and_set, front_set))
+    ds_set_stripped = set(map(get_card_and_set, ds_set))
+    if not ds_set_stripped.issubset(front_set_stripped):
+        raise Exception(f'Double-sided backs "{ds_set_stripped - front_set_stripped}" do not have matching fronts. Add the missing fronts to front image directory "{front_dir_path}".')
 
     if only_fronts:
         if len(ds_set) > 0:
@@ -284,8 +292,9 @@ def generate_pdf(
 
                 # Load the card back image
                 with Image.open(back_card_image_path) as back_im:
+                    card_name = os.path.splitext(os.path.basename(back_card_image_path))[0]
                     draw_card_layout(
-                        [back_im] * num_cards,
+                        [(card_name, back_im)] * num_cards,
                         single_sided_back_page,
                         num_rows,
                         num_cols,
@@ -315,7 +324,7 @@ def generate_pdf(
                     num_image = num_image + 1
 
                     front_image_path = os.path.join(front_dir_path, file)
-                    front_card_images.append(Image.open(front_image_path))
+                    front_card_images.append((os.path.splitext(file)[0], Image.open(front_image_path)))
 
                 single_sided_front_page = reg_im.copy()
 
@@ -361,11 +370,20 @@ def generate_pdf(
                     print(f'Image {num_image} (double-sided): {file}')
                     num_image = num_image + 1
 
-                    front_image_path = os.path.join(front_dir_path, file)
-                    front_card_images.append(Image.open(front_image_path))
+                    # Find the matching front image filename in front_dir_path
+                    file_parts = os.path.splitext(file)[0].split('-')[:4]
+                    match_name = '-'.join(file_parts)
+                    front_file = next(
+                        (f for f in front_image_filenames if '-'.join(os.path.splitext(f)[0].split('-')[:4]) == match_name),
+                        None
+                    )
+                    if front_file is None:
+                        raise Exception(f'No matching front image found for {file} in {front_dir_path}')
+                    front_image_path = os.path.join(front_dir_path, front_file)
+                    front_card_images.append((os.path.splitext(front_file)[0], Image.open(front_image_path)))
 
                     back_image_path = os.path.join(double_sided_dir_path, file)
-                    back_card_images.append(Image.open(back_image_path))
+                    back_card_images.append((os.path.splitext(file)[0], Image.open(back_image_path)))
 
                 double_sided_front_page = reg_im.copy()
                 double_sided_back_page = reg_im.copy()
