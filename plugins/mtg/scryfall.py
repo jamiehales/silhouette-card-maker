@@ -46,7 +46,7 @@ def cache_and_get_card(card_set: str, card_collector_number: str, card_name: str
         with open(image_path, 'wb') as f:
             f.write(card_art)
 
-    return card_art
+    return (os.path.splitext(filename)[0], card_art)
 
 def request_scryfall(
     query: str,
